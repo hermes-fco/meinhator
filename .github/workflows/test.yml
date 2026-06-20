@@ -31,3 +31,6 @@ jobs:
       - name: Check Syntax
         run: |
           perl -c app.pl
+      - name: Run Tests
+        run: |
+          prove -v t/
