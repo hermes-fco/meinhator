@@ -22,13 +22,20 @@ $slack->on(message => sub {
 	$slack->log->debug("Citated: " . join ", ", @citated) if @citated;
 	if(
 		not defined $user
-        or lc $uid eq lc $user_id
-		or lc $user_name eq lc $user
-		or grep {lc $_ eq lc $user} @citated
-		or $text =~ /\b$user\b/i
+		and not defined $uid
+		and not defined $lookfor
+		or defined $uid
+		and lc $uid eq lc $user_id
+		or defined $user
+		and defined $user_name
+		and lc $user_name eq lc $user
+		or defined $user
+		and grep {lc $_ eq lc $user} @citated
+		or defined $user
+		and $text =~ /\b\Q$user\E\b/i
 		or (
 			defined $lookfor
-			and $text =~ /\b$lookfor\b/i
+			and $text =~ /\b\Q$lookfor\E\b/i
 		)
 	) {
 		$slack->call_api("reactions.add", {

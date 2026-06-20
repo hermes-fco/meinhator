@@ -80,9 +80,9 @@ my $default_event = {
     text    => 'hello world',
 };
 
-# ────────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════
 # Test 1: No filters → reacts to EVERY message
-# ────────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════
 {
     local $ENV{SLACK_TOKEN}    = 'xoxb-test';
     local $ENV{SLACK_REACTION} = 'thumbsup';
@@ -99,10 +99,9 @@ my $default_event = {
         'no filters → uses configured SLACK_REACTION';
 }
 
-# ────────────────────────────────────────────────────────────────────
-# Test 2: SLACK_USER_ID set but SLACK_USER not set
-#         → reacts to EVERYTHING (gate: `not defined $user`)
-# ────────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════
+# Test 2: SLACK_USER_ID alone — works independently
+# ════════════════════════════════════════════════════════════════════
 {
     local $ENV{SLACK_TOKEN}    = 'xoxb-test';
     local $ENV{SLACK_REACTION} = '100';
@@ -112,16 +111,27 @@ my $default_event = {
 
     my $bot = load_app();
 
-    # Message from a different user — still reacts because $user is undef
-    $bot->_trigger(message => { %$default_event, user => 'U999', text => 'random' });
+    # ID matches
+    $bot->_trigger(message => { %$default_event, user => 'U111', text => 'hi' });
     is scalar(@Mojo::SlackRTM::REACTIONS_CALLS), 1,
-        'SLACK_USER_ID set but SLACK_USER not → reacts to every message (gate bug)';
+        'SLACK_USER_ID matches → reacts';
+
+    # ID does NOT match → no react
+    @Mojo::SlackRTM::REACTIONS_CALLS = ();
+    $bot->_trigger(message => { %$default_event, user => 'U999', text => 'random' });
+    is scalar(@Mojo::SlackRTM::REACTIONS_CALLS), 0,
+        'SLACK_USER_ID does not match → no react';
+
+    # Case insensitive
+    @Mojo::SlackRTM::REACTIONS_CALLS = ();
+    $bot->_trigger(message => { %$default_event, user => 'u111', text => 'hi' });
+    is scalar(@Mojo::SlackRTM::REACTIONS_CALLS), 1,
+        'SLACK_USER_ID case insensitive';
 }
 
-# ────────────────────────────────────────────────────────────────────
-# Test 3: SLACK_LOOKFOR set but SLACK_USER not set
-#         → reacts to EVERYTHING (same gate)
-# ────────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════
+# Test 3: SLACK_LOOKFOR alone — works independently
+# ════════════════════════════════════════════════════════════════════
 {
     local $ENV{SLACK_TOKEN}    = 'xoxb-test';
     local $ENV{SLACK_REACTION} = '100';
@@ -131,14 +141,27 @@ my $default_event = {
 
     my $bot = load_app();
 
-    $bot->_trigger(message => { %$default_event, text => 'no pizza here' });
+    # Keyword matches
+    $bot->_trigger(message => { %$default_event, text => 'who wants pizza?' });
     is scalar(@Mojo::SlackRTM::REACTIONS_CALLS), 1,
-        'SLACK_LOOKFOR set but SLACK_USER not → reacts anyway (gate)';
+        'SLACK_LOOKFOR matches → reacts';
+
+    # Keyword does NOT match → no react
+    @Mojo::SlackRTM::REACTIONS_CALLS = ();
+    $bot->_trigger(message => { %$default_event, text => 'random talk' });
+    is scalar(@Mojo::SlackRTM::REACTIONS_CALLS), 0,
+        'SLACK_LOOKFOR does not match → no react';
+
+    # Word boundary
+    @Mojo::SlackRTM::REACTIONS_CALLS = ();
+    $bot->_trigger(message => { %$default_event, text => 'pizzaria is great' });
+    is scalar(@Mojo::SlackRTM::REACTIONS_CALLS), 0,
+        'SLACK_LOOKFOR respects word boundary';
 }
 
-# ────────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════
 # Test 4: SLACK_USER set → only reacts when conditions match
-# ────────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════
 
 # 4a: SLACK_USER matches user_name
 {
@@ -150,18 +173,15 @@ my $default_event = {
 
     my $bot = load_app();
 
-    # Match by name
     $bot->_trigger(message => { %$default_event, user => 'U111', text => 'hi' });
     is scalar(@Mojo::SlackRTM::REACTIONS_CALLS), 1,
         'SLACK_USER matches message author name → reacts';
 
-    # No match
     @Mojo::SlackRTM::REACTIONS_CALLS = ();
     $bot->_trigger(message => { %$default_event, user => 'U222', text => 'hi' });
     is scalar(@Mojo::SlackRTM::REACTIONS_CALLS), 0,
         'SLACK_USER does not match author name → no react';
 
-    # Case insensitive
     @Mojo::SlackRTM::REACTIONS_CALLS = ();
     local $ENV{SLACK_USER} = 'JOHN';
     my $bot2 = load_app();
@@ -180,7 +200,6 @@ my $default_event = {
 
     my $bot = load_app();
 
-    # Message from jane, but @-mentions bob
     $bot->_trigger(message => {
         %$default_event,
         user => 'U222',
@@ -189,13 +208,8 @@ my $default_event = {
     is scalar(@Mojo::SlackRTM::REACTIONS_CALLS), 1,
         'SLACK_USER @-mentioned → reacts';
 
-    # No @-mention
     @Mojo::SlackRTM::REACTIONS_CALLS = ();
-    $bot->_trigger(message => {
-        %$default_event,
-        user => 'U222',
-        text => 'hey there',
-    });
+    $bot->_trigger(message => { %$default_event, user => 'U222', text => 'hey there' });
     is scalar(@Mojo::SlackRTM::REACTIONS_CALLS), 0,
         'SLACK_USER not @-mentioned → no react';
 }
@@ -210,7 +224,6 @@ my $default_event = {
 
     my $bot = load_app();
 
-    # Literal appearance
     $bot->_trigger(message => {
         %$default_event,
         user => 'U222',
@@ -250,29 +263,51 @@ my $default_event = {
 
     my $bot = load_app();
 
-    # ID match
-    $bot->_trigger(message => {
-        %$default_event,
-        user => 'U111',
-        text => 'hi from john',
-    });
+    $bot->_trigger(message => { %$default_event, user => 'U111', text => 'hi from john' });
     is scalar(@Mojo::SlackRTM::REACTIONS_CALLS), 1,
         'SLACK_USER_ID matches → reacts';
 
-    # No ID match
+    @Mojo::SlackRTM::REACTIONS_CALLS = ();
+    $bot->_trigger(message => { %$default_event, user => 'U222', text => 'hi from jane' });
+    is scalar(@Mojo::SlackRTM::REACTIONS_CALLS), 0,
+        'SLACK_USER_ID does not match → no react';
+}
+
+# ════════════════════════════════════════════════════════════════════
+# Test 5: Regex safety — \Q...\E prevents metacharacter injection
+# ════════════════════════════════════════════════════════════════════
+{
+    local $ENV{SLACK_TOKEN}    = 'xoxb-test';
+    local $ENV{SLACK_REACTION} = '100';
+    local $ENV{SLACK_USER}     = 'john.doe';      # '.' is regex wildcard
+    delete local $ENV{SLACK_USER_ID};
+    delete local $ENV{SLACK_LOOKFOR};
+
+    my $bot = load_app();
+
+    # Exact match expected
+    $bot->_trigger(message => {
+        %$default_event,
+        user => 'U999',
+        text => 'john.doe is online',
+    });
+    is scalar(@Mojo::SlackRTM::REACTIONS_CALLS), 1,
+        'regex-safety: exact username match works';
+
+    # '.' should NOT match arbitrary chars
     @Mojo::SlackRTM::REACTIONS_CALLS = ();
     $bot->_trigger(message => {
         %$default_event,
-        user => 'U222',
-        text => 'hi from jane',
+        user => 'U999',
+        text => 'johnXdoe is online',   # '.' should NOT match 'X'
     });
     is scalar(@Mojo::SlackRTM::REACTIONS_CALLS), 0,
-        'SLACK_USER_ID does not match → no react (when SLACK_USER is set)';
+        'regex-safety: regex metachar "." does NOT match arbitrary char';
 }
 
-# ────────────────────────────────────────────────────────────────────
-# Test 5: SLACK_USER + SLACK_LOOKFOR both set
-# ────────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════
+# Test 6: SLACK_USER + SLACK_LOOKFOR both set
+# ════════════════════════════════════════════════════════════════════
 {
     local $ENV{SLACK_TOKEN}    = 'xoxb-test';
     local $ENV{SLACK_REACTION} = '100';
@@ -282,7 +317,6 @@ my $default_event = {
 
     my $bot = load_app();
 
-    # Lookfor matches even when user doesn't
     $bot->_trigger(message => {
         %$default_event,
         user => 'U222',
@@ -291,7 +325,6 @@ my $default_event = {
     is scalar(@Mojo::SlackRTM::REACTIONS_CALLS), 1,
         'SLACK_LOOKFOR matches → reacts even when SLACK_USER does not';
 
-    # Neither matches
     @Mojo::SlackRTM::REACTIONS_CALLS = ();
     $bot->_trigger(message => {
         %$default_event,
@@ -302,9 +335,9 @@ my $default_event = {
         'neither SLACK_USER nor SLACK_LOOKFOR match → no react';
 }
 
-# ────────────────────────────────────────────────────────────────────
-# Test 6: SLACK_REACTION default
-# ────────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════
+# Test 7: SLACK_REACTION default
+# ════════════════════════════════════════════════════════════════════
 {
     local $ENV{SLACK_TOKEN}    = 'xoxb-test';
     delete local $ENV{SLACK_REACTION};
